@@ -103,23 +103,30 @@ func LoadStrT(buffer *bytes.Buffer, id string) *StrTChunk {
 	chunk := &StrTChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
+}
+
+type ImportEntry struct {
+	ModuleIndex   int
+	ModuleName    string
+	FunctionIndex int
+	FunctionName  string
+	Arity         uint32
 }
 
 type ImpTChunk struct {
 	Chunk
+	ImportCount uint32
+	ImportTable []ImportEntry
 }
 
 func LoadImpT(buffer *bytes.Buffer, id string) *ImpTChunk {
 	chunk := &ImpTChunk{}
 	chunk.load(buffer, id)
-
-	// TODO
 	return chunk
 }
 
-type FuncInfo struct {
+type ExportEntry struct {
 	Index        int
 	FunctionName string
 	Arity        uint32
@@ -129,7 +136,7 @@ type FuncInfo struct {
 type ExpTChunk struct {
 	Chunk
 	ExportCount uint32
-	ExportTable []FuncInfo
+	ExportTable []ExportEntry
 }
 
 func LoadExpT(buffer *bytes.Buffer, id string) *ExpTChunk {
@@ -147,7 +154,6 @@ func LoadLitT(buffer *bytes.Buffer, id string) *LitTChunk {
 	chunk := &LitTChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -159,7 +165,6 @@ func LoadLocT(buffer *bytes.Buffer, id string) *LocTChunk {
 	chunk := &LocTChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -171,7 +176,6 @@ func LoadAttr(buffer *bytes.Buffer, id string) *AttrChunk {
 	chunk := &AttrChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -183,7 +187,6 @@ func LoadCInf(buffer *bytes.Buffer, id string) *CInfChunk {
 	chunk := &CInfChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -195,7 +198,6 @@ func LoadDbgi(buffer *bytes.Buffer, id string) *DbgiChunk {
 	chunk := &DbgiChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -207,7 +209,6 @@ func LoadDocs(buffer *bytes.Buffer, id string) *DocsChunk {
 	chunk := &DocsChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -219,7 +220,6 @@ func LoadExDp(buffer *bytes.Buffer, id string) *ExDpChunk {
 	chunk := &ExDpChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -231,7 +231,6 @@ func LoadLine(buffer *bytes.Buffer, id string) *LineChunk {
 	chunk := &LineChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -266,6 +265,7 @@ func (this *BeamData) parseAtoms() {
 	chunk.Labels = labels
 
 }
+
 func (this *BeamData) parseExports() {
 	//if this.AtomChunk == nil { return }
 
@@ -273,9 +273,9 @@ func (this *BeamData) parseExports() {
 	data := bytes.NewBuffer(chunk.Data)
 	chunk.ExportCount = binary.BigEndian.Uint32(data.Next(4))
 
-	info := []FuncInfo{}
+	info := []ExportEntry{}
 	for i := 0; i < int(chunk.ExportCount); i++ {
-		e := FuncInfo{}
+		e := ExportEntry{}
 		e.Index = int(binary.BigEndian.Uint32(data.Next(4)))
 		e.FunctionName = this.AtomChunk.Labels[e.Index-1]
 		e.Arity = binary.BigEndian.Uint32(data.Next(4))
@@ -284,6 +284,27 @@ func (this *BeamData) parseExports() {
 	}
 
 	chunk.ExportTable = info
+}
+
+func (this *BeamData) parseImports() {
+	//if this.AtomChunk == nil { return }
+
+	chunk := this.ImpTChunk
+	data := bytes.NewBuffer(chunk.Data)
+	chunk.ImportCount = binary.BigEndian.Uint32(data.Next(4))
+
+	info := []ImportEntry{}
+	for i := 0; i < int(chunk.ImportCount); i++ {
+		e := ImportEntry{}
+		e.ModuleIndex = int(binary.BigEndian.Uint32(data.Next(4)))
+		e.FunctionName = this.AtomChunk.Labels[e.ModuleIndex-1]
+		e.FunctionIndex = int(binary.BigEndian.Uint32(data.Next(4)))
+		e.FunctionName = this.AtomChunk.Labels[e.FunctionIndex-1]
+		e.Arity = binary.BigEndian.Uint32(data.Next(4))
+		info = append(info, e)
+	}
+
+	chunk.ImportTable = info
 }
 
 func LoadBeamFile(beamPath string) (*BeamData, error) {
@@ -343,6 +364,7 @@ func LoadBeamFile(beamPath string) (*BeamData, error) {
 
 	data.parseAtoms()
 	data.parseExports()
+	data.parseImports()
 	return data, nil
 }
 
