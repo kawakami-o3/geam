@@ -62,15 +62,6 @@ func LoadAtom(buffer *bytes.Buffer, id string) *AtomChunk {
 	chunk := &AtomChunk{}
 	chunk.load(buffer, id)
 
-	data := bytes.NewBuffer(chunk.Data)
-	chunk.AtomCount = binary.BigEndian.Uint32(data.Next(4))
-	labels := []string{}
-	for i := 0; i < int(chunk.AtomCount); i++ {
-		s := int(data.Next(1)[0])
-		labels = append(labels, string(data.Next(s)))
-	}
-	chunk.Labels = labels
-
 	return chunk
 }
 
@@ -128,15 +119,23 @@ func LoadImpT(buffer *bytes.Buffer, id string) *ImpTChunk {
 	return chunk
 }
 
+type FuncInfo struct {
+	Index        int
+	FunctionName string
+	Arity        uint32
+	Label        uint32 // TODO
+}
+
 type ExpTChunk struct {
 	Chunk
+	ExportCount uint32
+	ExportTable []FuncInfo
 }
 
 func LoadExpT(buffer *bytes.Buffer, id string) *ExpTChunk {
 	chunk := &ExpTChunk{}
 	chunk.load(buffer, id)
 
-	// TODO
 	return chunk
 }
 
@@ -255,6 +254,38 @@ type BeamData struct {
 	LineChunk *LineChunk
 }
 
+func (this *BeamData) parseAtoms() {
+	chunk := this.AtomChunk
+	data := bytes.NewBuffer(chunk.Data)
+	chunk.AtomCount = binary.BigEndian.Uint32(data.Next(4))
+	labels := []string{}
+	for i := 0; i < int(chunk.AtomCount); i++ {
+		s := int(data.Next(1)[0])
+		labels = append(labels, string(data.Next(s)))
+	}
+	chunk.Labels = labels
+
+}
+func (this *BeamData) parseExports() {
+	//if this.AtomChunk == nil { return }
+
+	chunk := this.ExpTChunk
+	data := bytes.NewBuffer(chunk.Data)
+	chunk.ExportCount = binary.BigEndian.Uint32(data.Next(4))
+
+	info := []FuncInfo{}
+	for i := 0; i < int(chunk.ExportCount); i++ {
+		e := FuncInfo{}
+		e.Index = int(binary.BigEndian.Uint32(data.Next(4)))
+		e.FunctionName = this.AtomChunk.Labels[e.Index-1]
+		e.Arity = binary.BigEndian.Uint32(data.Next(4))
+		e.Label = binary.BigEndian.Uint32(data.Next(4))
+		info = append(info, e)
+	}
+
+	chunk.ExportTable = info
+}
+
 func LoadBeamFile(beamPath string) (*BeamData, error) {
 
 	file, err := os.Open(beamPath)
@@ -278,7 +309,6 @@ func LoadBeamFile(beamPath string) (*BeamData, error) {
 	for buffer.Len() > 0 {
 		bs := buffer.Next(4)
 		id := string(bs)
-		fmt.Println(id)
 		switch id {
 		case idAtom, idAtU8:
 			data.AtomChunk = LoadAtom(buffer, id)
@@ -311,6 +341,8 @@ func LoadBeamFile(beamPath string) (*BeamData, error) {
 		}
 	}
 
+	data.parseAtoms()
+	data.parseExports()
 	return data, nil
 }
 
