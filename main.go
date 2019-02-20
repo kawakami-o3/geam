@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"github.com/k0kubun/pp"
+
+	"./erl"
 )
 
 const (
@@ -65,33 +67,27 @@ func LoadAtom(buffer *bytes.Buffer, id string) *AtomChunk {
 	return chunk
 }
 
+type Instruction struct {
+	Opcode erl.Opcode
+	Args   []byte
+}
+
 type CodeChunk struct {
 	Chunk
 
+	SubSize    uint32
 	Version    uint32
 	MaxOpcode  uint32
 	LabelCount uint32
 	FunCount   uint32
+
+	Instructions []Instruction
 }
 
 func LoadCode(buffer *bytes.Buffer, id string) *CodeChunk {
 	chunk := &CodeChunk{}
 	chunk.load(buffer, id)
 
-	data := bytes.NewBuffer(chunk.Data)
-	chunk.Version = binary.BigEndian.Uint32(data.Next(4))
-	chunk.MaxOpcode = binary.BigEndian.Uint32(data.Next(4))
-	chunk.LabelCount = binary.BigEndian.Uint32(data.Next(4))
-	chunk.FunCount = binary.BigEndian.Uint32(data.Next(4))
-
-	// TODO
-	//opcodes := []string{}
-	/*
-		for i := uint32(0); i < chunk.FunCount; i++ {
-			fmt.Println(buffer.Next(1))
-			return chunk
-		}
-	*/
 	return chunk
 }
 
@@ -307,6 +303,39 @@ func (this *BeamData) parseImports() {
 	chunk.ImportTable = info
 }
 
+func (this *BeamData) parseCode() {
+	chunk := this.CodeChunk
+
+	data := bytes.NewBuffer(chunk.Data)
+	chunk.SubSize = binary.BigEndian.Uint32(data.Next(4))
+	chunk.Version = binary.BigEndian.Uint32(data.Next(4))
+	chunk.MaxOpcode = binary.BigEndian.Uint32(data.Next(4))
+	chunk.LabelCount = binary.BigEndian.Uint32(data.Next(4))
+	chunk.FunCount = binary.BigEndian.Uint32(data.Next(4))
+
+	// TODO
+	insts := []Instruction{}
+	for i := uint32(0); i < chunk.FunCount; i++ {
+		opId := int(data.Next(1)[0])
+		opc := findOpcode(opId)
+		insts = append(insts, Instruction{
+			Opcode: opc,
+			Args:   data.Next(opc.Arity),
+		})
+	}
+	//pp.Println(insts)
+	chunk.Instructions = insts
+}
+
+func findOpcode(id int) erl.Opcode {
+	for _, o := range erl.Opcodes {
+		if o.Id == id {
+			return o
+		}
+	}
+	return erl.Opcodes[0]
+}
+
 func LoadBeamFile(beamPath string) (*BeamData, error) {
 
 	file, err := os.Open(beamPath)
@@ -365,6 +394,7 @@ func LoadBeamFile(beamPath string) (*BeamData, error) {
 	data.parseAtoms()
 	data.parseExports()
 	data.parseImports()
+	data.parseCode()
 	return data, nil
 }
 

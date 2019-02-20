@@ -1,4 +1,5 @@
 geam
+erl/erl_gen.go
 
 # Binaries for programs and plugins
 *.exe
