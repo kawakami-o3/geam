@@ -10,7 +10,7 @@ import (
 
 	"github.com/k0kubun/pp"
 
-	"./erl"
+	"github.com/kawakami-o3/geam/erl"
 )
 
 const (
@@ -67,9 +67,31 @@ func LoadAtom(buffer *bytes.Buffer, id string) *AtomChunk {
 	return chunk
 }
 
+type TermType int
+
+const (
+	tyLiteral    TermType = 0  //  0 0 0 0 0 | 0 0 0
+	tyInt                 = 1  //  0 0 0 0 0 | 0 0 1
+	tyAtom                = 2  //  0 0 0 0 0 | 0 1 0
+	tyXreg                = 3  //  0 0 0 0 0 | 0 1 1
+	tyYreg                = 4  //  0 0 0 0 0 | 1 0 0
+	tyLabel               = 5  //  0 0 0 0 0 | 1 0 1
+	tyChar                = 6  //  0 0 0 0 0 | 1 1 0
+	tyFlaot               = 23 //  0 0 0 1 0 | 1 1 1  16 + 7
+	tyList                = 39 //  0 0 1 0 0 | 1 1 1  32 + 7
+	tyFloatReg            = 55 //  0 0 1 1 0 | 1 1 1  48 + 7
+	tyAllocList           = 71 //  0 1 0 0 0 | 1 1 1  64 + 7
+	tyExtLiteral          = 87 //  0 1 0 1 0 | 1 1 1  80 + 7
+)
+
+type Term struct {
+	TermType TermType
+	Content  byte
+}
+
 type Instruction struct {
 	Opcode erl.Opcode
-	Args   []byte
+	Args   []Term
 }
 
 type CodeChunk struct {
@@ -303,6 +325,13 @@ func (this *BeamData) parseImports() {
 	chunk.ImportTable = info
 }
 
+func decodeCompactTerm(b byte) Term {
+
+	//if (b & 3)
+	fmt.Println("%x", b)
+	return Term{tyLiteral, b}
+}
+
 func (this *BeamData) parseCode() {
 	chunk := this.CodeChunk
 
@@ -318,9 +347,13 @@ func (this *BeamData) parseCode() {
 	for i := uint32(0); i < chunk.FunCount; i++ {
 		opId := int(data.Next(1)[0])
 		opc := findOpcode(opId)
+		args := []Term{}
+		for _, b := range data.Next(opc.Arity) {
+			args = append(args, decodeCompactTerm(b))
+		}
 		insts = append(insts, Instruction{
 			Opcode: opc,
-			Args:   data.Next(opc.Arity),
+			Args:   args,
 		})
 	}
 	//pp.Println(insts)
@@ -406,5 +439,5 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	pp.Println(data)
+	pp.Println(data.CodeChunk)
 }

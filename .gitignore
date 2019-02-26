@@ -1,5 +1,7 @@
 geam
 erl/erl_gen.go
+go.mod
+go.sum
 
 # Binaries for programs and plugins
 *.exe
