@@ -1,7 +1,7 @@
 all: build
 
 build:
-	#goimports -w -l .
+	goimports -w -l .
 	go generate ./...
 	#go build
 	env GO111MODULE=on go build

@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/k0kubun/pp"
-
 	"github.com/kawakami-o3/geam/erl"
 )
 
@@ -67,26 +66,29 @@ func LoadAtom(buffer *bytes.Buffer, id string) *AtomChunk {
 	return chunk
 }
 
-type TermType int
-
 const (
-	tyLiteral    TermType = 0  //  0 0 0 0 0 | 0 0 0
-	tyInt                 = 1  //  0 0 0 0 0 | 0 0 1
-	tyAtom                = 2  //  0 0 0 0 0 | 0 1 0
-	tyXreg                = 3  //  0 0 0 0 0 | 0 1 1
-	tyYreg                = 4  //  0 0 0 0 0 | 1 0 0
-	tyLabel               = 5  //  0 0 0 0 0 | 1 0 1
-	tyChar                = 6  //  0 0 0 0 0 | 1 1 0
-	tyFlaot               = 23 //  0 0 0 1 0 | 1 1 1  16 + 7
-	tyList                = 39 //  0 0 1 0 0 | 1 1 1  32 + 7
-	tyFloatReg            = 55 //  0 0 1 1 0 | 1 1 1  48 + 7
-	tyAllocList           = 71 //  0 1 0 0 0 | 1 1 1  64 + 7
-	tyExtLiteral          = 87 //  0 1 0 1 0 | 1 1 1  80 + 7
+	tagLiteral    byte = 0   //  0 0 0 0 0 | 0 0 0
+	tagInt             = 1   //  0 0 0 0 0 | 0 0 1
+	tagAtom            = 2   //  0 0 0 0 0 | 0 1 0
+	tagXreg            = 3   //  0 0 0 0 0 | 0 1 1
+	tagYreg            = 4   //  0 0 0 0 0 | 1 0 0
+	tagLabel           = 5   //  0 0 0 0 0 | 1 0 1
+	tagChar            = 6   //  0 0 0 0 0 | 1 1 0
+	tagZ               = 7   //  0 0 0 0 0 | 1 1 1  7
+	tagFlaot           = 23  //  0 0 0 1 0 | 1 1 1  16 + 7
+	tagList            = 39  //  0 0 1 0 0 | 1 1 1  32 + 7
+	tagFloatReg        = 55  //  0 0 1 1 0 | 1 1 1  48 + 7
+	tagAllocList       = 71  //  0 1 0 0 0 | 1 1 1  64 + 7
+	tagExtLiteral      = 87  //  0 1 0 1 0 | 1 1 1  80 + 7
+	tagFull            = 255 //  1 1 1 1 1 | 1 1 1  255
+	tagErr             = 255 //  1 1 1 1 1 | 1 1 1  255
+
 )
 
 type Term struct {
-	TermType TermType
-	Content  byte
+	TermType byte
+	Content  []byte
+	Value    int64
 }
 
 type Instruction struct {
@@ -325,11 +327,46 @@ func (this *BeamData) parseImports() {
 	chunk.ImportTable = info
 }
 
-func decodeCompactTerm(b byte) Term {
+func decodeCompactTerm(data *bytes.Buffer) Term {
+	// FIXME
+	bs := data.Next(1)
+	b := bs[0]
+	fmt.Printf("%d %b %b %v\n", b, b, tagLiteral, b&tagZ == tagLiteral)
 
-	//if (b & 3)
-	fmt.Println("%x", b)
-	return Term{tyLiteral, b}
+	ret := Term{tagErr, bs, 0}
+	switch b & tagZ {
+	case tagLiteral, tagInt, tagAtom, tagXreg, tagYreg, tagLabel, tagChar:
+		tag := b & tagZ
+		if (b>>3)&1 == 0 {
+			ret = Term{tag, bs, int64(b >> 4)}
+			//} else if ((b>>3) & 1 == 1) && ((b>>4) & 1 == 0) {
+		} else if (b>>3)&3 == 1 {
+			bs = append(bs, data.Next(1)[0])
+			value := int64(bs[1]<<3) + int64(bs[0]>>5)
+			ret = Term{tag, bs, value}
+			//} else if ((b>>3) & 1 == 1) && ((b>>4) & 1 == 1) {
+		} else if (b>>3)&3 == 3 {
+			if b>>3 != 31 { // 16 + 8 + 4 + 2 + 1
+				size := int(b>>5) + 2
+				vs := data.Next(size)
+				bs = append(bs, vs...)
+				value := int64(0)
+				base := int64(1)
+				for i, v := range vs {
+					if i == 0 {
+						value += int64(v)
+					} else {
+						value += int64(v) * base
+					}
+					base *= 256
+				}
+				ret = Term{tag, bs, value}
+			} else {
+				panic("not implemented")
+			}
+		}
+	}
+	return ret
 }
 
 func (this *BeamData) parseCode() {
@@ -348,9 +385,17 @@ func (this *BeamData) parseCode() {
 		opId := int(data.Next(1)[0])
 		opc := findOpcode(opId)
 		args := []Term{}
-		for _, b := range data.Next(opc.Arity) {
-			args = append(args, decodeCompactTerm(b))
+		//		for _, b := range data.Next(opc.Arity) {
+		//			args = append(args, decodeCompactTerm(b))
+		//		}
+
+		l := 0
+		for l < opc.Arity {
+			t := decodeCompactTerm(data)
+			l += len(t.Content)
+			args = append(args, t)
 		}
+		pp.Println(args)
 		insts = append(insts, Instruction{
 			Opcode: opc,
 			Args:   args,
@@ -439,5 +484,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	pp.Println(data.CodeChunk)
+	//pp.Println(data.CodeChunk)
+	pp.Println("debug", len([]*BeamData{data}))
 }
