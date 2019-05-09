@@ -328,10 +328,8 @@ func (this *BeamData) parseImports() {
 }
 
 func decodeCompactTerm(data *bytes.Buffer) Term {
-	// FIXME
 	bs := data.Next(1)
 	b := bs[0]
-	fmt.Printf("%d %b %b %v\n", b, b, tagLiteral, b&tagZ == tagLiteral)
 
 	ret := Term{tagErr, bs, 0}
 	switch b & tagZ {
@@ -339,12 +337,10 @@ func decodeCompactTerm(data *bytes.Buffer) Term {
 		tag := b & tagZ
 		if (b>>3)&1 == 0 {
 			ret = Term{tag, bs, int64(b >> 4)}
-			//} else if ((b>>3) & 1 == 1) && ((b>>4) & 1 == 0) {
 		} else if (b>>3)&3 == 1 {
 			bs = append(bs, data.Next(1)[0])
 			value := int64(bs[1]<<3) + int64(bs[0]>>5)
 			ret = Term{tag, bs, value}
-			//} else if ((b>>3) & 1 == 1) && ((b>>4) & 1 == 1) {
 		} else if (b>>3)&3 == 3 {
 			if b>>3 != 31 { // 16 + 8 + 4 + 2 + 1
 				size := int(b>>5) + 2
@@ -385,17 +381,12 @@ func (this *BeamData) parseCode() {
 		opId := int(data.Next(1)[0])
 		opc := findOpcode(opId)
 		args := []Term{}
-		//		for _, b := range data.Next(opc.Arity) {
-		//			args = append(args, decodeCompactTerm(b))
-		//		}
-
 		l := 0
 		for l < opc.Arity {
 			t := decodeCompactTerm(data)
 			l += len(t.Content)
 			args = append(args, t)
 		}
-		pp.Println(args)
 		insts = append(insts, Instruction{
 			Opcode: opc,
 			Args:   args,
@@ -484,6 +475,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	//pp.Println(data.CodeChunk)
-	pp.Println("debug", len([]*BeamData{data}))
+	pp.Println(data.CodeChunk)
+	//pp.Println("debug", len([]*BeamData{data}))
 }
