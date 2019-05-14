@@ -254,6 +254,17 @@ func LoadLine(buffer *bytes.Buffer, id string) *LineChunk {
 	return chunk
 }
 
+type AbstChunk struct {
+	Chunk
+}
+
+func LoadAbst(buffer *bytes.Buffer, id string) *AbstChunk {
+	chunk := &AbstChunk{}
+	chunk.load(buffer, id)
+
+	return chunk
+}
+
 type BeamData struct {
 	Magic     string // 'FOR1'
 	Length    uint32
@@ -271,6 +282,7 @@ type BeamData struct {
 	DocsChunk *DocsChunk
 	ExDpChunk *ExDpChunk
 	LineChunk *LineChunk
+	AbstChunk *AbstChunk
 }
 
 func (this *BeamData) parseAtoms() {
@@ -455,6 +467,8 @@ func LoadBeamFile(beamPath string) (*BeamData, error) {
 			data.ExDpChunk = LoadExDp(buffer, id)
 		case idLine:
 			data.LineChunk = LoadLine(buffer, id)
+		case idAbst:
+			data.AbstChunk = LoadAbst(buffer, id)
 		default:
 			return nil, errors.New(fmt.Sprintf("unknown id: %s %v", id, bs))
 		}
@@ -464,6 +478,18 @@ func LoadBeamFile(beamPath string) (*BeamData, error) {
 	data.parseExports()
 	data.parseImports()
 	data.parseCode()
+	// TODO string table chunk
+	//pp.Println(data.StrTChunk)
+	// TODO attribute chunk
+	pp.Println(data.AttrChunk)
+	// TODO compilation information chunk
+	pp.Println(data.CInfChunk)
+	// TODO local function table chunk
+	pp.Println(data.LocTChunk)
+	// TODO literal table chunk
+	pp.Println(data.LitTChunk)
+	// TODO abstract code chunk
+	pp.Println(data.AbstChunk)
 	return data, nil
 }
 
@@ -475,6 +501,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	pp.Println(data.CodeChunk)
-	//pp.Println("debug", len([]*BeamData{data}))
+	//pp.Println(data.CodeChunk)
+	pp.Println("debug", len([]*BeamData{data}))
 }
